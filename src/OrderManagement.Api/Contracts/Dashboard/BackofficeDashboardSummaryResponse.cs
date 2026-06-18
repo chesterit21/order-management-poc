@@ -4,7 +4,7 @@ namespace OrderManagement.Api.Contracts.Dashboard;
 
 public sealed record BackofficeDashboardSummaryResponse
 {
-    public Guid? StoreId { get; init; }
+    public Guid StoreId { get; init; }
 
     public string? StoreName { get; init; }
 

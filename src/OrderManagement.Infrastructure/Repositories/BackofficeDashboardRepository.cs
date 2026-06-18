@@ -36,13 +36,10 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
             parameters.Add("AllowedStoreIds", allowedStoreIds.ToArray());
         }
 
-        if (query.StoreId is not null)
-        {
-            conditions.Add("p.store_id = @StoreId");
-            orderConditions.Add("o.store_id = @StoreId");
-        }
+        conditions.Add("p.store_id = @StoreId");
+        orderConditions.Add("o.store_id = @StoreId");
 
-        parameters.Add("StoreId", query.StoreId ?? (object)DBNull.Value);
+        parameters.Add("StoreId", query.StoreId);
         parameters.Add("LowStockThreshold", query.LowStockThreshold);
         parameters.Add("TodayStart", now.Date);
         parameters.Add("Now", now);
@@ -84,7 +81,7 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
                            s.id AS StoreId,
                            s.store_name AS StoreName
                        FROM stores s
-                       WHERE (@StoreId::uuid IS NOT NULL AND s.id = @StoreId)
+                       WHERE s.id = @StoreId
                        LIMIT 1
                    )
                    SELECT
@@ -117,7 +114,7 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
     }
 
     private static BackofficeDashboardSummaryDto Empty(
-        Guid? storeId,
+        Guid storeId,
         string? storeName,
         DateTimeOffset now)
     {

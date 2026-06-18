@@ -2,7 +2,7 @@ namespace OrderManagement.Application.DTOs.Dashboard;
 
 public sealed record BackofficeDashboardSummaryDto
 {
-    public Guid? StoreId { get; init; }
+    public Guid StoreId { get; init; }
 
     public string? StoreName { get; init; }
 
