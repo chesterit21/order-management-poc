@@ -79,6 +79,14 @@ Setelah lock:
 6. API commit.
 ```
 
+Semua critical transactions juga menjalankan:
+
+```sql
+SET LOCAL lock_timeout = '5s';
+```
+
+Ini memastikan request tidak hang terlalu lama saat menunggu lock dan gagal cepat dengan conflict/error yang jelas.
+
 ### Deadlock Prevention
 
 Semua product dikunci dengan urutan yang sama:
@@ -103,6 +111,40 @@ Final stock = 5.
 Stock never negative.
 ```
 
+## 3.1 Demo Endpoint
+
+Tersedia endpoint demo untuk menguji concurrent stock deduction secara sederhana:
+
+```http
+POST /api/v1/demo/concurrent-stock-deduction
+```
+
+### Implementation
+
+`DemoController` mengirim **2 request order creation secara paralel** untuk product yang sama menggunakan `Task.WhenAll`:
+
+```text
+Request A -> POST /api/v1/orders (create order for product)
+Request B -> POST /api/v1/orders (create order for product)
+        \             /
+         FOR UPDATE lock on products row
+              |
+     One succeeds, one fails
+```
+
+### Idempotency
+
+DemoController **men-generate Idempotency-Key unik secara internal per request**, sehingga `RequireIdempotencyKeyFilter` (yang mewajibkan header) di-bypass. Ini memungkinkan demo mengirim 2 request independen tanpa konflik idempotency key.
+
+### Expected Result
+
+```text
+Satu order berhasil dibuat (stock ter-deduct).
+Satu order gagal dengan INSUFFICIENT_STOCK.
+Final stock = 5 (assuming initial 15, qty 10 each).
+Stock never negative.
+```
+
 ## 4. Database Constraint as Last Defense
 
 Table `products` punya constraint:
@@ -112,6 +154,8 @@ CHECK (stock_quantity >= 0)
 ```
 
 Ini adalah last line of defense jika ada bug di application logic.
+
+Table `products` juga memiliki kolom `store_id` yang menghubungkan produk ke store tertentu.
 
 ## 5. Idempotent Create Under Race
 
@@ -152,8 +196,8 @@ No duplicate order.
 
 ```text
 Order status = Confirmed
-Admin A update to Shipped
-Admin B cancel order
+ApplicationAdmin A update to Shipped
+ApplicationAdmin B cancel order
 Same time
 ```
 
@@ -226,7 +270,7 @@ InventoryMismatch   -> do not restore stock
 
 ### Why No Restore?
 
-Jika admin cancel karena stock fisik habis akibat offline/manual sale, system stock tidak boleh ditambah lagi.
+Jika ApplicationAdmin cancel karena stock fisik habis akibat offline/manual sale, system stock tidak boleh ditambah lagi.
 
 Example:
 
@@ -234,7 +278,7 @@ Example:
 System stock awal = 10
 Online order deduct 10 -> system stock = 0
 Warehouse check: physical stock already sold offline
-Admin cancel reason StockUnavailable
+ApplicationAdmin cancel reason StockUnavailable
 System stock must remain 0
 ```
 
@@ -338,7 +382,7 @@ Fail fast and return clear conflict/error.
 - Two orders with same idempotency key.
 - Two Paid payments for one order.
 - Double stock restore.
-- Customer seeing another customer's order.
+- Buyer seeing another buyer's order.
 - PATCH status setting Cancelled.
 - Terminal state changed again.
 ```

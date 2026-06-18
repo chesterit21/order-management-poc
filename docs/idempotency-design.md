@@ -19,6 +19,8 @@ Create order wajib mengirim:
 Idempotency-Key: {unique-key}
 ```
 
+Header `Idempotency-Key` memiliki validasi panjang maksimal **200 karakter**. Jika melebihi, request ditolak dengan 400 Bad Request.
+
 Recommended client key:
 
 ```text
@@ -116,12 +118,14 @@ UNIQUE (user_id, key, endpoint)
 
 ## 7. Flow
 
+Insert menggunakan pattern `ON CONFLICT DO NOTHING` dengan unique constraint `(user_id, key, endpoint)` sebagai gate.
+
 ### New Request
 
 ```text
 1. Compute request hash.
-2. Insert idempotency record status InProgress.
-3. If insert succeeds, process order.
+2. INSERT INTO idempotency_keys (...) VALUES (...) ON CONFLICT DO NOTHING.
+3. If insert succeeds (row inserted), process order.
 4. Store response body and status code.
 5. Mark Completed.
 ```
@@ -137,6 +141,8 @@ Return stored response.
 ```text
 Return 409 REQUEST_ALREADY_IN_PROGRESS.
 ```
+
+Jika record InProgress tetapi `locked_until` sudah lewat (timeout), record dianggap stale dan request baru dapat melanjutkan.
 
 ### Same Key Different Payload
 
@@ -155,8 +161,8 @@ Return stored failed response if available.
 Two same-key requests arrive at same time:
 
 ```text
-Request A INSERT InProgress succeeds.
-Request B INSERT conflicts due unique constraint.
+Request A INSERT ON CONFLICT DO NOTHING succeeds.
+Request B INSERT ON CONFLICT DO NOTHING returns no row (conflict detected).
 Request B reads existing record.
 Request B returns InProgress conflict or stored response.
 ```
@@ -168,7 +174,15 @@ Only one order creation flow executes.
 Only one stock deduction occurs.
 ```
 
-## 9. Activity Logs
+## 9. RequireIdempotencyKeyFilter
+
+`RequireIdempotencyKeyFilter` adalah **filter attribute** yang diterapkan di level controller (`[ServiceFilter(typeof(RequireIdempotencyKeyFilter))]`).
+
+Filter ini memvalidasi bahwa header `Idempotency-Key` ada sebelum action method dieksekusi. Jika header tidak ada, request langsung ditolak dengan 400 Bad Request tanpa masuk ke business logic.
+
+Pengecualian: endpoint demo (`DemoController`) men-generate Idempotency-Key secara internal, sehingga tidak melalui filter ini.
+
+## 10. Activity Logs
 
 Idempotency emits activity log events:
 
@@ -191,7 +205,7 @@ reason
 
 Full key is not logged.
 
-## 10. Current Limitation
+## 11. Current Limitation
 
 Current design:
 
@@ -208,7 +222,7 @@ Use shared UnitOfWork transaction:
 Begin idempotency -> create order -> mark completed -> commit
 ```
 
-## 11. What Must Not Happen
+## 12. What Must Not Happen
 
 ```text
 - Same key creates two orders.

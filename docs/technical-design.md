@@ -56,23 +56,81 @@ scripts/
 ### OrderManagement.Api
 
 ```text
-Controllers
+13 controllers:
+  AuthController
+  ProductsController
+  OrdersController
+  PaymentsController
+  StoresController
+  StoreOperatorsController
+  BackofficeOrdersController
+  BackofficeProductsController
+  BackofficeDashboardController
+  ActivityLogsController
+  DemoController
+  DiagnosticsController
+  InternalActivityLogsTestController
+
 HTTP contracts
-Middleware
+Middleware (order: CorrelationId -> RequestLogging -> GlobalExceptionHandling -> Auth -> Controllers)
+Filters: RequireIdempotencyKeyFilter
 Swagger setup
 Authentication/authorization setup
 CORS
-Health check
-Internal activity logs page/API
 ```
 
 ### OrderManagement.Application
 
 ```text
-Use case services
+Use case services:
+  AuthService
+  OrderService
+  BackofficeOrderService
+  ProductService
+  ProductManagementService
+  PaymentService
+  StoreService
+  StoreOperatorService
+  StoreAuthorizationService
+  BackofficeDashboardService
+  ActivityLogService
+  DemoService
+  OrderCancellationPolicy
+
 DTOs/Commands/Results
-Validators
-Application exceptions
+20 validators:
+  LoginCommandValidator
+  CreateOrderCommandValidator
+  CancelOrderCommandValidator
+  UpdateOrderStatusCommandValidator
+  ListOrdersQueryValidator
+  BackofficeCancelOrderCommandValidator
+  BackofficeOrderListQueryDtoValidator
+  BackofficeUpdateOrderStatusCommandValidator
+  CreatePaymentCommandValidator
+  ProductListQueryDtoValidator
+  BackofficeProductListQueryDtoValidator
+  CreateProductCommandValidator
+  UpdateProductCommandValidator
+  SetProductStatusCommandValidator
+  AdjustProductStockCommandValidator
+  OpenStoreCommandValidator
+  UpdateStoreCommandValidator
+  CreateStoreOperatorCommandValidator
+  SetStoreOperatorStatusCommandValidator
+  BackofficeDashboardSummaryQueryDtoValidator
+
+Application exceptions:
+  AppException (base)
+  BusinessRuleAppException
+  ConcurrencyAppException
+  ConflictAppException
+  ForbiddenAppException
+  IdempotencyConflictException
+  NotFoundAppException
+  UnauthorizedAppException
+  ValidationAppException
+
 Interfaces/abstractions
 Business orchestration
 Authorization decisions based on current user
@@ -82,27 +140,95 @@ Cancellation policy
 ### OrderManagement.Domain
 
 ```text
-Entities
-Enums
-Value objects
-Rule facts
-Rule results
+Entities (9 + base classes):
+  Entity (base: Id, CreatedAt, UpdatedAt)
+  AuditableEntity (extends Entity: CreatedBy, UpdatedBy)
+  Order
+  OrderItem
+  OrderStatusHistory
+  Product
+  User
+  Store
+  StoreMember
+  Payment
+  IdempotencyRecord
+  InventoryMovement
+
+Enums:
+  OrderStatus
+  PaymentStatus
+  UserRole (Buyer, SellerAdmin, SellerOperator, ApplicationAdmin, DevOps)
+  OrderCancellationReason
+  InventoryMovementType
+  StockAdjustmentType
+  StoreMemberRole (Owner, Operator)
+  IdempotencyStatus
+
+Value objects:
+  Money (struct)
+  OrderNumber (record)
+  Sku (record)
+
+Rule facts:
+  OrderTransitionFact
+  CancelOrderFact
+  PaymentFact
+
+Rule result:
+  RuleValidationResult
+
 Domain constants
 ```
 
 ### OrderManagement.Infrastructure
 
 ```text
-Dapper repositories
+Dapper repositories:
+  OrderRepository
+  ProductRepository
+  UserRepository
+  StoreRepository
+  PaymentRepository
+  IdempotencyRepository
+  ActivityLogRepository
+  BackofficeOrderRepository
+  ProductManagementRepository
+  BackofficeDashboardRepository
+
 PostgreSQL connection factory
 Migration runner
 JWT generator
 BCrypt password hasher
 Current user context
-NRules implementation
+NRules implementation (8 rules):
+  PendingToConfirmedRule
+  ConfirmedToShippedRule
+  ShippedToDeliveredRule
+  PendingToCancelledRule
+  ConfirmedToCancelledRule
+  CancelAllowedRule
+  PaymentAllowedRule
+  TerminalOrderStateRule
+
+Activity logs:
+  ActivityLogQueue (dual priority Channel)
+  ActivityLogWriter
+  ActivityLogBackgroundWorker
+  ActivityLogRepository
+
 Idempotency persistence
-Request hashing
-Activity log queue/background worker/repository
+Request hashing (SHA-256 normalized JSON)
+
+File storage:
+  LocalProductImageStorageService (saves to wwwroot/uploads/products)
+
+Options classes:
+  DatabaseOptions
+  MigrationOptions
+  JwtOptions
+  IdempotencyOptions
+  ActivityLogOptions
+  FileUploadOptions
 ```
 
 ## 5. Main Modules
@@ -146,6 +272,9 @@ stock_quantity
 price
 row_version
 is_active
+store_id
+description
+primary_image_url
 ```
 
 Stock is protected by:
@@ -223,7 +352,71 @@ Pending order + payment failed -> payment Failed + order remains Pending
 Cancel paid order -> payment RefundRequired
 ```
 
-## 5.6 Idempotency
+## 5.6 Stores
+
+Endpoints:
+
+```text
+POST /api/v1/stores/open — Open store (Buyer/SellerAdmin)
+GET /api/v1/stores/my — My stores
+GET /api/v1/stores/{storeId} — Store detail
+PATCH /api/v1/stores/{storeId} — Update store
+```
+
+Store Operators:
+
+```text
+GET /api/v1/stores/{storeId}/operators — List operators
+POST /api/v1/stores/{storeId}/operators — Create operator
+PATCH /api/v1/stores/{storeId}/operators/{userId}/status — Set status
+```
+
+## 5.7 Backoffice
+
+Orders:
+
+```text
+GET /api/v1/backoffice/orders — List orders (store-scoped)
+GET /api/v1/backoffice/orders/{id} — Order detail
+PATCH /api/v1/backoffice/orders/{id}/status — Update status
+POST /api/v1/backoffice/orders/{id}/cancel — Cancel
+```
+
+Products:
+
+```text
+GET /api/v1/backoffice/products — List/store-scoped
+GET /api/v1/backoffice/products/{id} — Detail
+POST /api/v1/backoffice/products — Create
+PATCH /api/v1/backoffice/products/{id} — Update
+PATCH /api/v1/backoffice/products/{id}/status — Set active/inactive
+POST /api/v1/backoffice/products/{id}/stock/adjust — Stock adjustment
+POST /api/v1/backoffice/products/{id}/image — Upload image (max 5MB)
+```
+
+Dashboard:
+
+```text
+GET /api/v1/backoffice/dashboard — Summary stats
+```
+
+## 5.8 Demo
+
+```text
+POST /api/v1/demo/concurrent-stock-deduction — Demo concurrent stock scenario
+```
+
+## 5.9 Diagnostics
+
+ApplicationAdmin/DevOps only:
+
+```text
+GET /api/v1/diagnostics/ok — Health check
+GET /api/v1/diagnostics/app-error — Test business rule exception (non-prod only)
+GET /api/v1/diagnostics/unhandled-error — Test unhandled exception (non-prod only)
+```
+
+## 5.10 Idempotency
 
 Create order requires:
 
@@ -243,7 +436,7 @@ Request hash:
 SHA-256 normalized JSON
 ```
 
-## 5.7 Activity Logs
+## 5.11 Activity Logs
 
 Activity logs are emitted through async queue and persisted by background worker.
 
@@ -255,7 +448,7 @@ GET /api/v1/internal/activity-logs/{id}
 GET /internal/activity-logs
 ```
 
-Admin/Ops only for data API.
+ApplicationAdmin/DevOps only for data API.
 
 ## 6. Database Tables
 
@@ -270,6 +463,17 @@ idempotency_keys
 payments
 activity_logs
 schema_migrations
+stores
+store_members
+```
+
+Key column details:
+
+```text
+products: store_id, description, primary_image_url, CHECK (stock_quantity >= 0)
+orders: store_id
+order_items: price, subtotal, nullable product_name_snapshot
+payments: created_by
 ```
 
 ## 7. Migration Runner
@@ -284,7 +488,42 @@ At startup:
 5. Fails startup if applied migration checksum changed.
 ```
 
-## 8. Critical Transactions
+Currently 19 migration files (001 through 019):
+
+```text
+001: create_extensions
+002: create_users
+003: create_products
+004: create_orders
+005: create_order_items
+006: create_inventory_movements
+007: create_order_status_history
+008: create_idempotency_keys
+009: create_payments
+010: create_indexes
+011: update_inventory_movement_types
+012: create_order_number_sequence
+013: create_activity_logs
+014: create_stores_and_update_user_roles
+015: update_products_for_store_ownership
+016: add_store_id_to_orders
+017: add_price_to_order_items
+018: add_subtotal_to_order_items
+019: allow_null_product_name_snapshot
+```
+
+## 8. Seed Files
+
+Currently 4 seed files:
+
+```text
+001_seed_users.sql — 5 users with roles Buyer, SellerAdmin, SellerOperator, ApplicationAdmin, DevOps
+002_seed_products.sql — 3 products
+003_seed_stores.sql — Creates Seller One Store
+004_assign_products_to_seed_store.sql — Assigns products to store
+```
+
+## 9. Critical Transactions
 
 ### Create Order
 
@@ -324,7 +563,7 @@ Lock product rows FOR UPDATE ORDER BY id
 Restore or no-restore stock based on cancellation reason
 Insert inventory movement
 Mark paid payment RefundRequired if any
-Update order Cancelled
+Update order Cancelled + row_version
 Insert status history
 Commit
 ```
@@ -342,7 +581,7 @@ If Paid: update order Confirmed and insert history
 Commit
 ```
 
-## 9. Security Design
+## 10. Security Design
 
 ```text
 JWT bearer authentication
@@ -350,11 +589,16 @@ Role-based authorization
 BCrypt password hashing
 No token/password logging
 Consistent error response without stack trace
-Internal logs API Admin/Ops only
+Internal logs API ApplicationAdmin/DevOps only
 Customer data isolation
+
+Store-scoped data isolation:
+- StoreOwner sees own store data
+- StoreOperator sees assigned store data
+- Users can only act within their store context
 ```
 
-## 10. Observability
+## 11. Observability
 
 ```text
 X-Correlation-ID
@@ -364,13 +608,13 @@ activity_logs table
 Internal logs API/page
 ```
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
 Unit tests:
 
 ```text
-Validators
-NRules
+Validators for 15+ commands
+NRules for 8 rules (PendingToConfirmed, ConfirmedToShipped, etc.)
 Cancellation policy
 Idempotency hash/service
 ```
@@ -383,9 +627,10 @@ Idempotent create race
 Concurrent status update
 Payment vs cancel race
 Duplicate payment prevention
+API endpoint integration tests (auth, orders, payments, products)
 ```
 
-## 12. Known Limitations
+## 13. Known Limitations
 
 ```text
 Payment provider is mocked.
@@ -395,7 +640,7 @@ Inventory service embedded in API for prototype.
 Idempotency and order creation are not yet one shared transaction.
 ```
 
-## 13. Future Improvements
+## 14. Future Improvements
 
 ```text
 Shared UnitOfWork for idempotency + order transaction.

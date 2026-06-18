@@ -67,6 +67,8 @@ RequestFailed
 
 ## 4. Activity Log Queue Architecture
 
+Activity log queue menggunakan **dual-priority bounded `Channel<ActivityLogMessage>`**:
+
 ```text
 Business flow / middleware
         |
@@ -76,8 +78,9 @@ IActivityLogWriter
         v
 IActivityLogQueue
         |
-        v
-Bounded Channel
+        +---> High Priority Channel
+        |
+        +---> Normal Priority Channel
         |
         v
 ActivityLogBackgroundWorker
@@ -87,6 +90,34 @@ ActivityLogRepository batch insert
         |
         v
 PostgreSQL activity_logs
+```
+
+### Priority Classification
+
+**High priority events** — always processed first:
+
+```text
+OrderCreated
+StockDeducted / StockRestored / StockAdjusted
+PaymentPaid / PaymentFailed
+OrderCancelled
+```
+
+**Normal priority events** — processed after high priority queue is drained:
+
+```text
+RequestCompleted
+RequestFailed
+IdempotencyAccepted / IdempotencyReplayReturned / IdempotencyConflict
+```
+
+### Background Worker Behavior
+
+```text
+1. Try to read from High Priority Channel (non-blocking).
+2. If high priority has items, process them immediately.
+3. If high priority is empty, read from Normal Priority Channel.
+4. Batch insert logs to database.
 ```
 
 ## 5. Why Queue?
@@ -102,7 +133,11 @@ Queue design benefits:
 - Failure to write non-critical logs does not fail business operation.
 ```
 
-## 6. Activity Log Table
+## 6. IActivityLogContextAccessor
+
+`IActivityLogContextAccessor` berada di **API layer** dan di-inject melalui middleware. Accessor ini menyediakan konteks activity log (seperti correlation ID, actor info, request path) ke seluruh pipeline tanpa perlu passing parameter eksplisit.
+
+## 7. Activity Log Table
 
 Table:
 
@@ -148,7 +183,7 @@ created_at
 error_code
 ```
 
-## 7. Emitted Activity Events
+## 8. Emitted Activity Events
 
 Request:
 
@@ -190,6 +225,7 @@ Inventory:
 StockDeducted
 StockRestored
 StockNotRestored
+StockAdjusted
 InsufficientStockDetected
 ```
 
@@ -210,7 +246,25 @@ Concurrency:
 ConcurrencyConflict
 ```
 
-## 8. Sensitive Data Rules
+Store:
+
+```text
+StoreCreated
+StoreUpdated
+StoreOperatorCreated
+StoreOperatorStatusChanged
+```
+
+Backoffice Product:
+
+```text
+BackofficeProductCreated
+BackofficeProductUpdated
+BackofficeProductStatusChanged
+ProductImageUploaded
+```
+
+## 9. Sensitive Data Rules
 
 Never log:
 
@@ -237,7 +291,7 @@ Error code
 Idempotency key prefix only
 ```
 
-## 9. Internal Logs API
+## 10. Internal Logs API
 
 Admin/Ops only:
 
@@ -260,7 +314,7 @@ page
 pageSize
 ```
 
-## 10. Internal Logs Page
+## 11. Internal Logs Page
 
 Page:
 
@@ -279,7 +333,7 @@ View activity timeline.
 Open detail with before/after/metadata JSON.
 ```
 
-## 11. Performance Guidelines
+## 12. Performance Guidelines
 
 ```text
 - Do not log full body by default.
@@ -290,7 +344,7 @@ Open detail with before/after/metadata JSON.
 - Use indexed filters.
 ```
 
-## 12. Failure Behavior
+## 13. Failure Behavior
 
 If activity log queue is full:
 
@@ -307,7 +361,7 @@ Technical error log is written.
 Worker delays briefly and continues.
 ```
 
-## 13. What Must Not Happen
+## 14. What Must Not Happen
 
 ```text
 - Password/JWT stored in activity_logs.

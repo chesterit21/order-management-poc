@@ -21,7 +21,7 @@
 ```mermaid
 flowchart TD
     subgraph ApiLayer[OrderManagement.Api]
-        Controllers[Controllers]
+        Controllers[Controllers<br/>13 controllers]
         Contracts[HTTP Contracts]
         Middlewares[Middlewares]
         SwaggerSetup[Swagger Setup]
@@ -30,19 +30,20 @@ flowchart TD
     end
 
     subgraph ApplicationLayer[OrderManagement.Application]
-        AppServices[Application Services]
+        AppServices[Application Services<br/>13 services]
         Validators[FluentValidation Validators]
         AppExceptions[Application Exceptions]
         AppDtos[DTOs / Commands / Results]
-        AppAbstractions[Application Abstractions]
+        AppAbstractions[Application Abstractions<br/>18 interfaces]
         CancellationPolicy[Order Cancellation Policy]
     end
 
     subgraph DomainLayer[OrderManagement.Domain]
-        Entities[Entities]
-        Enums[Enums]
-        ValueObjects[Value Objects]
-        RuleFacts[Rule Facts]
+        BaseClasses[Base Classes<br/>Entity, AuditableEntity]
+        Entities[Entities<br/>User, Product, Order, OrderItem,<br/>Payment, InventoryMovement,<br/>OrderStatusHistory, IdempotencyRecord,<br/>Store, StoreMember]
+        Enums[Enums<br/>UserRole, OrderStatus, StoreMemberRole,<br/>InventoryMovementType, StockAdjustmentType,<br/>IdempotencyStatus, PaymentStatus,<br/>OrderCancellationReason]
+        ValueObjects[Value Objects<br/>Money, OrderNumber, Sku]
+        RuleFacts[Rule Facts<br/>OrderTransitionFact, CancelOrderFact, PaymentFact]
         RuleResults[Rule Results]
         DomainConstants[Domain Constants]
     end
@@ -54,9 +55,11 @@ flowchart TD
         JwtGenerator[JWT Token Generator]
         PasswordHasher[BCrypt Password Hasher]
         CurrentUserContext[Current User Context]
-        NRulesService[NRules Order Rules Service]
-        IdempotencyInfra[Idempotency Service / Request Hash]
+        NRulesService[NRules Order Rules Service<br/>8 rules]
+        IdempotencyInfra[Idempotency Service / Request Hash Service]
         ActivityLogInfra[Activity Log Queue / Worker / Repository]
+        ImageStorage[Local Product Image Storage Service]
+        FileUploadOptions[File Upload Options]
     end
 
     ApiLayer --> ApplicationLayer
@@ -75,16 +78,20 @@ flowchart TD
 
 ```text
 OrderManagement.Api:
-  HTTP concerns only: controllers, contracts, middleware, Swagger, auth setup, internal HTML page.
+  HTTP concerns only: controllers (13), contracts, middleware, Swagger, auth setup, internal HTML page.
 
 OrderManagement.Application:
-  Use case orchestration, validation, application-level authorization, exceptions, command/result DTOs, abstractions.
+  Use case orchestration, validation, application-level authorization, exceptions, command/result DTOs,
+  abstractions (18 interfaces), order cancellation policy, demo service, backoffice services, store services.
 
 OrderManagement.Domain:
-  Domain entities, enums, value objects, business rule facts/results.
+  Domain entities (10), enums (8), value objects (3), base classes (Entity, AuditableEntity),
+  business rule facts/results.
 
 OrderManagement.Infrastructure:
-  Dapper persistence, PostgreSQL migration, JWT, BCrypt, NRules integration, idempotency persistence, activity logging infrastructure.
+  Dapper persistence, PostgreSQL migration, JWT, BCrypt, NRules integration (8 rules),
+  idempotency persistence, request hash service, activity logging infrastructure,
+  local product image storage, file upload configuration.
 ```
 
 ---
@@ -183,7 +190,9 @@ sequenceDiagram
 Important:
 
 ```text
-RequestLogging wraps GlobalExceptionHandling so it can observe final response status after exception mapping.
+CorrelationIdMiddleware → RequestLoggingMiddleware → GlobalExceptionHandlingMiddleware.
+RequestLogging wraps GlobalExceptionHandling so its finally block can observe the final
+response status code after GlobalExceptionHandling has mapped exceptions.
 ```
 
 ---
@@ -198,20 +207,90 @@ flowchart TD
     API --> ProductsController[ProductsController]
     API --> OrdersController[OrdersController]
     API --> PaymentsController[PaymentsController]
-    API --> InternalLogsController[InternalActivityLogsController]
-    API --> InternalLogsPage[InternalActivityLogsPageController]
+    API --> StoresController[StoresController]
+    API --> StoreOperatorsController[StoreOperatorsController]
+    API --> BackofficeOrdersController[BackofficeOrdersController]
+    API --> BackofficeProductsController[BackofficeProductsController]
+    API --> BackofficeDashboardController[BackofficeDashboardController]
+    API --> DemoController[DemoController]
+    API --> DiagnosticsController[DiagnosticsController]
+    API --> ActivityLogsController[ActivityLogsController]
+    API --> InternalLogsTestController[InternalActivityLogsTestController]
 
-    AuthController --> AuthService[AuthService]
-    ProductsController --> ProductService[ProductService]
-    OrdersController --> OrderService[OrderService]
-    PaymentsController --> PaymentService[PaymentService]
-    InternalLogsController --> ActivityLogQueryService[ActivityLogQueryService]
+    AuthController --> AuthService[IAuthService / AuthService]
+    ProductsController --> ProductService[IProductService / ProductService]
+    OrdersController --> OrderService[IOrderService / OrderService]
+    PaymentsController --> PaymentService[IPaymentService / PaymentService]
+    StoresController --> StoreService[IStoreService / StoreService]
+    StoreOperatorsController --> StoreOperatorService[IStoreOperatorService / StoreOperatorService]
+    BackofficeOrdersController --> BackofficeOrderService[IBackofficeOrderService / BackofficeOrderService]
+    BackofficeProductsController --> ProductMgmtService[IProductManagementService / ProductManagementService]
+    BackofficeDashboardController --> DashboardService[IBackofficeDashboardService / BackofficeDashboardService]
+    DemoController --> DemoService[IDemoService / DemoService]
+    ActivityLogsController --> ActivityLogQueryService[IActivityLogQueryService / ActivityLogQueryService]
+    InternalLogsTestController --> ActivityLogWriter[IActivityLogWriter]
 
     AuthService --> UserRepository[UserRepository]
     ProductService --> ProductRepository[ProductRepository]
     OrderService --> OrderRepository[OrderRepository]
     PaymentService --> PaymentRepository[PaymentRepository]
+    StoreService --> StoreRepository[StoreRepository]
+    StoreOperatorService --> StoreMemberRepository[StoreMemberRepository]
+    BackofficeOrderService --> OrderRepository
+    BackofficeOrderService --> PaymentRepository
+    ProductMgmtService --> ProductRepository
+    ProductMgmtService --> StoreRepository
+    DashboardService --> DashboardRepository[DashboardQueryRepository]
     ActivityLogQueryService --> ActivityLogQueryRepository[ActivityLogQueryRepository]
+```
+
+### Controller Routes
+
+```text
+Public API:
+  AuthController              POST   /api/v1/auth/login
+  ProductsController          GET    /api/v1/products
+  OrdersController            POST   /api/v1/orders
+  OrdersController            GET    /api/v1/orders
+  OrdersController            GET    /api/v1/orders/{id}
+  OrdersController            PATCH  /api/v1/orders/{id}/status
+  OrdersController            POST   /api/v1/orders/{id}/cancel
+  PaymentsController          POST   /api/v1/orders/{orderId}/payments
+  PaymentsController          GET    /api/v1/orders/{orderId}/payments
+  StoresController            POST   /api/v1/stores
+  StoresController            GET    /api/v1/stores
+  StoresController            GET    /api/v1/stores/{storeId}
+  StoresController            PUT    /api/v1/stores/{storeId}
+  StoreOperatorsController    GET    /api/v1/stores/{storeId}/operators
+  StoreOperatorsController    POST   /api/v1/stores/{storeId}/operators
+  StoreOperatorsController    PATCH  /api/v1/stores/{storeId}/operators/{userId}/status
+
+Backoffice API (Admin/Ops):
+  BackofficeOrdersController  GET    /api/v1/backoffice/orders
+  BackofficeOrdersController  GET    /api/v1/backoffice/orders/{id}
+  BackofficeOrdersController  PATCH  /api/v1/backoffice/orders/{id}/status
+  BackofficeOrdersController  POST   /api/v1/backoffice/orders/{id}/cancel
+  BackofficeProductsController GET   /api/v1/backoffice/products
+  BackofficeProductsController GET   /api/v1/backoffice/products/{id}
+  BackofficeProductsController POST  /api/v1/backoffice/products
+  BackofficeProductsController PUT   /api/v1/backoffice/products/{id}
+  BackofficeProductsController PATCH /api/v1/backoffice/products/{id}/status
+  BackofficeProductsController POST  /api/v1/backoffice/products/{id}/image
+  BackofficeProductsController POST  /api/v1/backoffice/products/{id}/stock/adjust
+  BackofficeDashboardController GET  /api/v1/backoffice/dashboard
+
+Diagnostic/Demo API:
+  DiagnosticsController       GET    /api/v1/diagnostics/ok
+  DiagnosticsController       GET    /api/v1/diagnostics/app-error
+  DiagnosticsController       GET    /api/v1/diagnostics/unhandled-error
+  DemoController              POST   /api/v1/demo/concurrent-stock-deduction
+
+Internal Operational API (Admin/Ops):
+  ActivityLogsController      GET    /api/v1/internal/activity-logs
+  InternalActivityLogsTestController POST /api/v1/internal/activity-logs/test
+
+Pages:
+  Internal Logs Page          GET    /internal/activity-logs
 ```
 
 ---
@@ -224,6 +303,13 @@ erDiagram
     users ||--o{ order_status_history : changed_by
     users ||--o{ inventory_movements : created_by
     users ||--o{ idempotency_keys : owns
+    users ||--o{ stores : owns
+    users ||--o{ store_members : member_of
+    users ||--o{ payments : created_by
+
+    stores ||--o{ store_members : has
+    stores ||--o{ products : contains
+    stores ||--o{ orders : placed_at
 
     orders ||--o{ order_items : contains
     orders ||--o{ order_status_history : has
@@ -244,10 +330,36 @@ erDiagram
         timestamptz updated_at
     }
 
+    stores {
+        uuid id PK
+        uuid owner_user_id FK
+        varchar store_name
+        varchar slug
+        text description
+        text logo_url
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    store_members {
+        uuid id PK
+        uuid store_id FK
+        uuid user_id FK
+        varchar role
+        boolean is_active
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
     products {
         uuid id PK
+        uuid store_id FK
         varchar sku
         varchar name
+        text description
+        text primary_image_url
         int stock_quantity
         numeric price
         bigint row_version
@@ -258,6 +370,7 @@ erDiagram
 
     orders {
         uuid id PK
+        uuid store_id FK
         varchar order_number
         uuid customer_id FK
         varchar status
@@ -275,8 +388,10 @@ erDiagram
         uuid order_id FK
         uuid product_id FK
         varchar product_name_snapshot
+        numeric price
         numeric unit_price_snapshot
         int quantity
+        numeric subtotal
         numeric line_total
         timestamptz created_at
     }
@@ -327,9 +442,30 @@ erDiagram
         varchar status
         varchar provider
         varchar payment_reference
+        uuid created_by FK
         timestamptz created_at
         timestamptz updated_at
     }
+```
+
+### Domain Entities Map
+
+```text
+Table                 Domain Entity         Base Class
+users                 User                  AuditableEntity
+stores                Store                 AuditableEntity
+store_members         StoreMember           AuditableEntity
+products              Product               AuditableEntity
+orders                Order                 AuditableEntity
+order_items           OrderItem             Entity
+inventory_movements   InventoryMovement     Entity
+order_status_history  OrderStatusHistory    Entity
+idempotency_keys      IdempotencyRecord     AuditableEntity
+payments              Payment               Entity
+
+Base classes:
+  Entity             — Id
+  AuditableEntity    — Id, CreatedAt, UpdatedAt
 ```
 
 ---
@@ -474,8 +610,8 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client as Admin/Ops Client
-    participant Controller as OrdersController
-    participant Service as OrderService
+    participant Controller as OrdersController / BackofficeOrdersController
+    participant Service as OrderService / BackofficeOrderService
     participant Repo as OrderRepository
     participant Rules as NRulesOrderRulesService
     participant DB as PostgreSQL
@@ -517,8 +653,8 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client as Customer/Admin/Ops Client
-    participant Controller as OrdersController
-    participant Service as OrderService
+    participant Controller as OrdersController / BackofficeOrdersController
+    participant Service as OrderService / BackofficeOrderService
     participant Policy as OrderCancellationPolicy
     participant Repo as OrderRepository
     participant Rules as NRulesOrderRulesService
@@ -671,7 +807,7 @@ No payment succeeds after order is already cancelled.
 sequenceDiagram
     participant User as Admin/Ops
     participant Page as Internal Logs Page
-    participant API as InternalActivityLogsController
+    participant API as ActivityLogsController
     participant Service as ActivityLogQueryService
     participant Repo as ActivityLogQueryRepository
     participant DB as PostgreSQL
@@ -738,6 +874,9 @@ Runtime startup sequence:
 - Activity logs are async and searchable.
 - Internal logs API is Admin/Ops only.
 - Sensitive data is not logged.
+- Store isolation: operators/scoped to their stores via StoreAuthorizationService.
+- Product image uploads validated for size, extension, content-type; stored with GUID filename.
+- Request hash comparison detects idempotency key reuse with different payloads.
 ```
 
 ---
@@ -762,7 +901,62 @@ Future improvements:
 - Rate limiting for login and create order.
 ```
 
-Dokumen ini menjelaskan arsitektur Order Management API POC, mencakup layering, dependency direction, runtime request pipeline, database components, concurrency-critical flows, idempotency flow, payment/cancel race protection, dan activity logging/tracing.
+---
+
+## 18. Domain Base Classes and Value Objects
+
+```mermaid
+classDiagram
+    class Entity {
+        <<abstract>>
+        +Guid Id
+        +Equals() bool
+        +GetHashCode() int
+    }
+
+    class AuditableEntity {
+        <<abstract>>
+        +DateTimeOffset CreatedAt
+        +DateTimeOffset UpdatedAt
+        +SetCreatedAt()
+        +SetUpdatedAt()
+    }
+
+    class Money {
+        <<record struct>>
+        +decimal Amount
+        +Zero Money
+        +From(decimal) Money
+        +operator +()
+        +operator -()
+        +operator *()
+    }
+
+    class OrderNumber {
+        <<record struct>>
+        +string Value
+        +From(string) OrderNumber
+        +Generate(DateTimeOffset, long) OrderNumber
+    }
+
+    class Sku {
+        <<record struct>>
+        +string Value
+        +From(string) Sku
+    }
+
+    Entity <|-- AuditableEntity
+    AuditableEntity <|-- User
+    AuditableEntity <|-- Store
+    AuditableEntity <|-- StoreMember
+    AuditableEntity <|-- Product
+    AuditableEntity <|-- Order
+    AuditableEntity <|-- IdempotencyRecord
+    Entity <|-- OrderItem
+    Entity <|-- Payment
+    Entity <|-- InventoryMovement
+    Entity <|-- OrderStatusHistory
+```
 
 ---
 
@@ -794,8 +988,19 @@ flowchart TD
     API --> Products[Products API<br/>List / Detail]
     API --> Orders[Orders API<br/>Create / Get / List / Status / Cancel]
     API --> Payments[Payments API<br/>Create / List Payments]
+    API --> Stores[Stores API<br/>Open / List / Update]
+    API --> StoreOperators[Store Operators API<br/>Manage Store Operators]
     API --> Health[Health Check<br/>/health]
     API --> Swagger[Swagger UI<br/>/swagger]
+
+    %% Backoffice API Capabilities
+    API --> BackofficeOrders[Backoffice Orders API<br/>List / Detail / Status / Cancel]
+    API --> BackofficeProducts[Backoffice Products API<br/>CRUD / Image Upload / Stock Adjust]
+    API --> BackofficeDashboard[Backoffice Dashboard API<br/>Summary Statistics]
+
+    %% Demo / Diagnostic Capabilities
+    API --> Demo[Demo API<br/>Concurrent Stock Deduction]
+    API --> Diagnostics[Diagnostics API<br/>OK / App Error / Unhandled Error]
 
     %% Internal Operational Capability
     API --> InternalLogsApi[Internal Activity Logs API<br/>Admin/Ops Only]
@@ -817,6 +1022,8 @@ flowchart TD
 
     %% Database Tables
     PostgreSQL --> Users[(users)]
+    PostgreSQL --> StoresTable[(stores)]
+    PostgreSQL --> StoreMembers[(store_members)]
     PostgreSQL --> ProductsTable[(products)]
     PostgreSQL --> OrdersTable[(orders)]
     PostgreSQL --> OrderItems[(order_items)]
@@ -835,9 +1042,10 @@ flowchart TD
     classDef cross fill:#fce7f3,stroke:#db2777,color:#0f172a;
 
     class MVC,Angular,React,Svelte,Vue,Postman,ClientApps client;
-    class API,Auth,Products,Orders,Payments,Health,Swagger api;
+    class API,Auth,Products,Orders,Payments,Stores,StoreOperators,Health,Swagger api;
+    class BackofficeOrders,BackofficeProducts,BackofficeDashboard,Demo,Diagnostics api;
     class InternalLogsApi,InternalLogsPage internal;
-    class PostgreSQL,Users,ProductsTable,OrdersTable,OrderItems,InventoryMovements,StatusHistory,IdempotencyKeys,PaymentsTable,ActivityLogs,SchemaMigrations db;
+    class PostgreSQL,Users,StoresTable,StoreMembers,ProductsTable,OrdersTable,OrderItems,InventoryMovements,StatusHistory,IdempotencyKeys,PaymentsTable,ActivityLogs,SchemaMigrations db;
     class Correlation,ErrorHandling,RequestLogging,ActivityQueue,ActivityWorker cross;
 ```
 
@@ -861,11 +1069,17 @@ Order Management API:
   - Update status
   - Cancel order
   - Create/list payments
+  - Open/manage stores and store operators
+  - Backoffice order management (Admin/Ops)
+  - Backoffice product CRUD, image upload, stock adjustment
+  - Backoffice dashboard summary
+  - Demo: concurrent stock deduction scenario
+  - Diagnostics: verify API pipeline health
   - Internal activity log tracing
 
 PostgreSQL:
-  System of record untuk users, products, orders, order items, payments, idempotency records,
-  inventory movements, status history, migrations, dan activity logs.
+  System of record untuk users, stores, store members, products, orders, order items, payments,
+  idempotency records, inventory movements, status history, migrations, dan activity logs.
 
 Internal Activity Logs:
   Digunakan oleh Admin/Ops untuk tracing operasional berdasarkan correlation ID, order ID,
@@ -881,6 +1095,7 @@ Authentication:
 Authorization:
   Internal logs hanya bisa diakses Admin/Ops.
   Customer hanya bisa melihat/mengelola order miliknya sendiri.
+  Store operators/scoped ke store masing-masing melalui StoreAuthorizationService.
 
 Correlation:
   Semua request memiliki X-Correlation-ID untuk tracing end-to-end.
@@ -903,11 +1118,23 @@ Public API:
   /api/v1/products
   /api/v1/orders
   /api/v1/orders/{id}/payments
+  /api/v1/stores
+  /api/v1/stores/{storeId}/operators
   /health
   /swagger
 
+Backoffice API (Admin/Ops):
+  /api/v1/backoffice/orders
+  /api/v1/backoffice/products
+  /api/v1/backoffice/dashboard
+
+Demo / Diagnostics:
+  /api/v1/demo
+  /api/v1/diagnostics
+
 Internal Operational API:
   /api/v1/internal/activity-logs
+  /api/v1/internal/activity-logs/test
   /internal/activity-logs
 
 Database Boundary:

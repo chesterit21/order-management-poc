@@ -125,7 +125,7 @@ Response `200 OK`:
     "id": "11111111-1111-1111-1111-111111111111",
     "username": "admin",
     "displayName": "System Admin",
-    "role": "Admin"
+    "role": "ApplicationAdmin"
   }
 }
 ```
@@ -158,6 +158,60 @@ Password is never returned.
 Password hash is never returned.
 JWT token is not stored in activity logs.
 Invalid username and invalid password return the same generic error.
+Store operator JWT token includes storeId claim.
+Store operators can only access data assigned to their store.
+Store owner (SellerAdmin) can manage multiple stores.
+```
+
+---
+
+## 3.2 Refresh Token
+
+```http
+POST /api/v1/auth/refresh-token
+```
+
+Access:
+
+```text
+Authenticated user (with valid refresh token)
+```
+
+Response `200 OK`:
+
+```json
+{
+  "accessToken": "new-jwt-token",
+  "expiresIn": 3600
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+```
+
+---
+
+## 3.3 Logout
+
+```http
+POST /api/v1/auth/logout
+```
+
+Access:
+
+```text
+Authenticated user
+```
+
+Response `200 OK`
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
 ```
 
 ---
@@ -180,6 +234,7 @@ Query parameters:
 
 ```text
 search     optional string, max length 100
+storeId    optional UUID
 page       optional int, default 1, min 1
 pageSize   optional int, default 20, min 1, max 100
 ```
@@ -199,6 +254,9 @@ Response `200 OK`:
       "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       "sku": "PRD-MOUSE-001",
       "name": "Mouse Wireless",
+      "description": "Wireless mouse with ergonomic design",
+      "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "imageUrl": "https://cdn.example.com/images/mouse-001.jpg",
       "stockQuantity": 15,
       "price": 150000,
       "isActive": true
@@ -247,6 +305,9 @@ Response `200 OK`:
   "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
   "sku": "PRD-MOUSE-001",
   "name": "Mouse Wireless",
+  "description": "Wireless mouse with ergonomic design",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "imageUrl": "https://cdn.example.com/images/mouse-001.jpg",
   "stockQuantity": 15,
   "price": 150000,
   "rowVersion": 1,
@@ -276,8 +337,8 @@ Access:
 
 ```text
 Authenticated user
-Customer can create order only for themselves.
-Admin/Ops can create order for operational flow if allowed by service logic.
+Buyer can create order only for themselves.
+StoreBackofficeUser can create order for operational flow if allowed by service logic.
 ```
 
 Required headers:
@@ -292,6 +353,7 @@ Request:
 ```json
 {
   "customerId": "33333333-3333-3333-3333-333333333333",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   "items": [
     {
       "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -306,6 +368,7 @@ Validation rules:
 
 ```text
 customerId required
+storeId required
 items required, at least one item
 duplicate productId not allowed
 productId required
@@ -320,6 +383,8 @@ Response `201 Created`:
 {
   "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
   "orderNumber": "ORD-20260617-000001",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
   "customerId": "33333333-3333-3333-3333-333333333333",
   "status": "Pending",
   "shippingAddress": "Jl. Example No. 1, Tangerang Selatan",
@@ -404,8 +469,8 @@ Access:
 
 ```text
 Authenticated user
-Customer can only access own order
-Admin/Ops can access all orders
+Buyer can only access own order
+StoreBackofficeUser can access store orders
 ```
 
 Route parameters:
@@ -420,6 +485,8 @@ Response `200 OK`:
 {
   "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
   "orderNumber": "ORD-20260617-000001",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
   "customerId": "33333333-3333-3333-3333-333333333333",
   "customerName": "Customer One",
   "status": "Pending",
@@ -470,8 +537,8 @@ Access:
 
 ```text
 Authenticated user
-Customer sees only own orders
-Admin/Ops can see all orders
+Buyer sees only own orders
+StoreBackofficeUser can see store orders
 ```
 
 Query parameters:
@@ -479,6 +546,7 @@ Query parameters:
 ```text
 status       optional string: Pending, Confirmed, Shipped, Delivered, Cancelled
 customerId   optional UUID
+storeId      optional UUID
 fromDate     optional DateTimeOffset
 toDate       optional DateTimeOffset
 page         optional int, default 1, min 1
@@ -499,6 +567,8 @@ Response `200 OK`:
     {
       "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
       "orderNumber": "ORD-20260617-000001",
+      "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "storeName": "Toko Elektronik",
       "customerId": "33333333-3333-3333-3333-333333333333",
       "customerName": "Customer One",
       "status": "Pending",
@@ -520,7 +590,7 @@ Response `200 OK`:
 Security behavior:
 
 ```text
-If customer sends customerId of another user, API still forces current customer's own user id.
+If Buyer sends customerId of another user, API still forces current buyer's own user id.
 ```
 
 Possible errors:
@@ -542,7 +612,7 @@ PATCH /api/v1/orders/{id}/status
 Access:
 
 ```text
-Admin/Ops only
+StoreBackofficeUser only
 ```
 
 Route parameters:
@@ -646,9 +716,8 @@ POST /api/v1/orders/{id}/cancel
 Access:
 
 ```text
-Customer owner
-Admin
-Ops
+Buyer (order owner)
+StoreBackofficeUser
 ```
 
 Route parameters:
@@ -690,8 +759,8 @@ InventoryMismatch   -> do not restore stock
 Customer rule:
 
 ```text
-Customer can only use CustomerRequested reason.
-Admin/Ops can use all cancellation reasons.
+Buyer can only use CustomerRequested reason.
+StoreBackofficeUser can use all cancellation reasons.
 ```
 
 Response `200 OK` with stock restore:
@@ -775,9 +844,8 @@ POST /api/v1/orders/{orderId}/payments
 Access:
 
 ```text
-Customer owner
-Admin
-Ops
+Buyer (order owner)
+StoreBackofficeUser
 ```
 
 Route parameters:
@@ -864,9 +932,8 @@ GET /api/v1/orders/{orderId}/payments
 Access:
 
 ```text
-Customer owner
-Admin
-Ops
+Buyer (order owner)
+StoreBackofficeUser
 ```
 
 Route parameters:
@@ -904,11 +971,1039 @@ Possible errors:
 
 ---
 
-# 7. Internal Activity Logs API
+# 7. Stores API
+
+## 7.1 Open Store
+
+```http
+POST /api/v1/stores/open
+```
+
+Access:
+
+```text
+Buyer or SellerAdmin
+```
+
+Request:
+
+```json
+{
+  "storeName": "Toko Elektronik",
+  "description": "Menjual berbagai perlengkapan elektronik"
+}
+```
+
+Response `201 Created`:
+
+```json
+{
+  "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
+  "description": "Menjual berbagai perlengkapan elektronik",
+  "isActive": true,
+  "createdAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+400 VALIDATION_ERROR
+401 UNAUTHORIZED
+403 FORBIDDEN
+409 STORE_NAME_ALREADY_EXISTS
+```
+
+---
+
+## 7.2 Get My Stores
+
+```http
+GET /api/v1/stores/my
+```
+
+Access:
+
+```text
+Authenticated user
+```
+
+Response `200 OK`:
+
+```json
+{
+  "stores": [
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "storeName": "Toko Elektronik",
+      "description": "Menjual berbagai perlengkapan elektronik",
+      "isActive": true,
+      "createdAt": "2026-06-17T00:00:00Z"
+    }
+  ]
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+```
+
+---
+
+## 7.3 Get Store By Id
+
+```http
+GET /api/v1/stores/{storeId}
+```
+
+Access:
+
+```text
+Authenticated user
+```
+
+Route parameters:
+
+```text
+storeId required UUID
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
+  "description": "Menjual berbagai perlengkapan elektronik",
+  "isActive": true,
+  "createdAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+404 STORE_NOT_FOUND
+```
+
+---
+
+## 7.4 Update Store
+
+```http
+PATCH /api/v1/stores/{storeId}
+```
+
+Access:
+
+```text
+Store backoffice user
+```
+
+Route parameters:
+
+```text
+storeId required UUID
+```
+
+Request:
+
+```json
+{
+  "storeName": "Toko Elektronik Jaya",
+  "description": "Menjual berbagai perlengkapan elektronik dan gadget"
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik Jaya",
+  "description": "Menjual berbagai perlengkapan elektronik dan gadget",
+  "isActive": true,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+409 STORE_NAME_ALREADY_EXISTS
+422 VALIDATION_ERROR
+```
+
+---
+
+# 8. Store Operators API
+
+Base path: `/api/v1/stores/{storeId}/operators`
+
+Access: `StoreBackofficeUser`
+
+## 8.1 List Operators
+
+```http
+GET /api/v1/stores/{storeId}/operators
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+storeId required UUID
+```
+
+Response `200 OK`:
+
+```json
+{
+  "operators": [
+    {
+      "userId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "username": "operator1",
+      "displayName": "Operator Satu",
+      "isActive": true,
+      "createdAt": "2026-06-17T00:00:00Z"
+    }
+  ]
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+```
+
+---
+
+## 8.2 Create Operator
+
+```http
+POST /api/v1/stores/{storeId}/operators
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+storeId required UUID
+```
+
+Request:
+
+```json
+{
+  "username": "operator1",
+  "password": "Password123!",
+  "displayName": "Operator Satu"
+}
+```
+
+Response `201 Created`:
+
+```json
+{
+  "userId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+  "username": "operator1",
+  "displayName": "Operator Satu",
+  "isActive": true,
+  "createdAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+409 USERNAME_ALREADY_EXISTS
+422 VALIDATION_ERROR
+```
+
+---
+
+## 8.3 Update Operator Status
+
+```http
+PATCH /api/v1/stores/{storeId}/operators/{operatorUserId}/status
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+storeId        required UUID
+operatorUserId required UUID
+```
+
+Request:
+
+```json
+{
+  "isActive": false
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "userId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+  "username": "operator1",
+  "displayName": "Operator Satu",
+  "isActive": false,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+404 OPERATOR_NOT_FOUND
+422 VALIDATION_ERROR
+```
+
+---
+
+# 9. Backoffice Orders API
+
+Base path: `/api/v1/backoffice/orders`
+
+Access: `StoreBackofficeUser (SellerAdmin, SellerOperator, ApplicationAdmin)`
+
+## 9.1 List Orders
+
+```http
+GET /api/v1/backoffice/orders
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Query parameters:
+
+```text
+storeId      optional UUID
+status       optional string: Pending, Confirmed, Shipped, Delivered, Cancelled
+customerId   optional UUID
+fromDate     optional DateTimeOffset
+toDate       optional DateTimeOffset
+page         optional int, default 1, min 1
+pageSize     optional int, default 20, min 1, max 100
+```
+
+Response `200 OK`:
+
+```json
+{
+  "items": [
+    {
+      "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
+      "orderNumber": "ORD-20260617-000001",
+      "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "storeName": "Toko Elektronik",
+      "customerId": "33333333-3333-3333-3333-333333333333",
+      "customerName": "Customer One",
+      "status": "Pending",
+      "totalAmount": 1500000,
+      "rowVersion": 1,
+      "createdAt": "2026-06-17T00:00:00Z",
+      "updatedAt": "2026-06-17T00:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "totalItems": 1,
+    "totalPages": 1
+  }
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+422 VALIDATION_ERROR
+```
+
+---
+
+## 9.2 Get Order Detail
+
+```http
+GET /api/v1/backoffice/orders/{id}
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
+  "orderNumber": "ORD-20260617-000001",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
+  "customerId": "33333333-3333-3333-3333-333333333333",
+  "customerName": "Customer One",
+  "status": "Pending",
+  "shippingAddress": "Jl. Example No. 1, Tangerang Selatan",
+  "totalAmount": 1500000,
+  "rowVersion": 1,
+  "items": [
+    {
+      "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "productName": "Mouse Wireless",
+      "quantity": 10,
+      "unitPrice": 150000,
+      "lineTotal": 1500000
+    }
+  ],
+  "statusHistory": [
+    {
+      "fromStatus": null,
+      "toStatus": "Pending",
+      "reason": "Order created.",
+      "changedBy": "33333333-3333-3333-3333-333333333333",
+      "changedAt": "2026-06-17T00:00:00Z"
+    }
+  ],
+  "createdAt": "2026-06-17T00:00:00Z",
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 ORDER_NOT_FOUND
+```
+
+---
+
+## 9.3 Update Order Status
+
+```http
+PATCH /api/v1/backoffice/orders/{id}/status
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```json
+{
+  "targetStatus": "Shipped",
+  "expectedRowVersion": 2,
+  "reason": "Handed over to courier."
+}
+```
+
+Allowed transitions:
+
+```text
+Pending -> Confirmed
+Confirmed -> Shipped
+Shipped -> Delivered
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
+  "orderNumber": "ORD-20260617-000001",
+  "previousStatus": "Confirmed",
+  "currentStatus": "Shipped",
+  "rowVersion": 3,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 ORDER_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+422 VALIDATION_ERROR
+422 INVALID_ORDER_STATUS_TRANSITION
+422 ORDER_TERMINAL_STATE
+422 CANCELLED_STATUS_REQUIRES_CANCEL_ENDPOINT
+```
+
+---
+
+## 9.4 Cancel Order
+
+```http
+POST /api/v1/backoffice/orders/{id}/cancel
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```json
+{
+  "expectedRowVersion": 1,
+  "cancellationReason": "OperationalIssue",
+  "reason": "Stock unavailable from supplier."
+}
+```
+
+Cancellation reasons:
+
+```text
+CustomerRequested
+StockUnavailable
+InventoryMismatch
+OperationalIssue
+FraudSuspected
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
+  "orderNumber": "ORD-20260617-000001",
+  "previousStatus": "Pending",
+  "currentStatus": "Cancelled",
+  "cancellationReason": "OperationalIssue",
+  "stockRestoreApplied": true,
+  "rowVersion": 2,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 ORDER_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+422 VALIDATION_ERROR
+422 INVALID_ORDER_STATUS_TRANSITION
+422 ORDER_ALREADY_CANCELLED
+422 ORDER_TERMINAL_STATE
+422 INVALID_CANCELLATION_REASON
+```
+
+---
+
+# 10. Backoffice Products API
+
+Base path: `/api/v1/backoffice/products`
+
+Access: `StoreBackofficeUser`
+
+## 10.1 List Products
+
+```http
+GET /api/v1/backoffice/products
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Query parameters:
+
+```text
+storeId    optional UUID
+search     optional string, max length 100
+isActive   optional boolean
+page       optional int, default 1, min 1
+pageSize   optional int, default 20, min 1, max 100
+```
+
+Response `200 OK`:
+
+```json
+{
+  "items": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "sku": "PRD-MOUSE-001",
+      "name": "Mouse Wireless",
+      "description": "Wireless mouse with ergonomic design",
+      "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "imageUrl": "https://cdn.example.com/images/mouse-001.jpg",
+      "stockQuantity": 15,
+      "price": 150000,
+      "rowVersion": 1,
+      "isActive": true
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "totalItems": 1,
+    "totalPages": 1
+  }
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+422 VALIDATION_ERROR
+```
+
+---
+
+## 10.2 Get Product Detail
+
+```http
+GET /api/v1/backoffice/products/{id}
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless",
+  "description": "Wireless mouse with ergonomic design",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "imageUrl": "https://cdn.example.com/images/mouse-001.jpg",
+  "stockQuantity": 15,
+  "price": 150000,
+  "rowVersion": 1,
+  "isActive": true
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 PRODUCT_NOT_FOUND
+```
+
+---
+
+## 10.3 Create Product
+
+```http
+POST /api/v1/backoffice/products
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Request:
+
+```json
+{
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless",
+  "description": "Wireless mouse with ergonomic design",
+  "stockQuantity": 50,
+  "price": 150000
+}
+```
+
+Response `201 Created`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless",
+  "description": "Wireless mouse with ergonomic design",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "stockQuantity": 50,
+  "price": 150000,
+  "rowVersion": 1,
+  "isActive": true,
+  "createdAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+409 SKU_ALREADY_EXISTS
+422 VALIDATION_ERROR
+```
+
+---
+
+## 10.4 Update Product
+
+```http
+PATCH /api/v1/backoffice/products/{id}
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```json
+{
+  "name": "Mouse Wireless Pro",
+  "description": "Updated description",
+  "price": 175000,
+  "expectedRowVersion": 1
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless Pro",
+  "description": "Updated description",
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "stockQuantity": 50,
+  "price": 175000,
+  "rowVersion": 2,
+  "isActive": true,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 PRODUCT_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+422 VALIDATION_ERROR
+```
+
+---
+
+## 10.5 Update Product Status
+
+```http
+PATCH /api/v1/backoffice/products/{id}/status
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```json
+{
+  "isActive": false,
+  "expectedRowVersion": 2
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless",
+  "isActive": false,
+  "rowVersion": 3,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 PRODUCT_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+422 VALIDATION_ERROR
+```
+
+---
+
+## 10.6 Adjust Stock
+
+```http
+POST /api/v1/backoffice/products/{id}/stock/adjust
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```json
+{
+  "adjustmentType": "Increase",
+  "quantity": 10,
+  "expectedRowVersion": 2,
+  "reason": "Restock from supplier"
+}
+```
+
+Adjustment types:
+
+```text
+Increase
+Decrease
+Set
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "sku": "PRD-MOUSE-001",
+  "name": "Mouse Wireless",
+  "previousStockQuantity": 50,
+  "currentStockQuantity": 60,
+  "adjustmentType": "Increase",
+  "adjustmentQuantity": 10,
+  "rowVersion": 3,
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 PRODUCT_NOT_FOUND
+409 CONCURRENT_UPDATE_CONFLICT
+422 VALIDATION_ERROR
+422 INSUFFICIENT_STOCK
+```
+
+---
+
+## 10.7 Upload Image
+
+```http
+POST /api/v1/backoffice/products/{id}/image
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Route parameters:
+
+```text
+id required UUID
+```
+
+Request:
+
+```text
+multipart/form-data, max 5MB
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "imageUrl": "https://cdn.example.com/images/product-001.jpg",
+  "updatedAt": "2026-06-17T00:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+400 FILE_TOO_LARGE
+400 INVALID_FILE_TYPE
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 PRODUCT_NOT_FOUND
+422 VALIDATION_ERROR
+```
+
+---
+
+# 11. Backoffice Dashboard API
+
+```http
+GET /api/v1/backoffice/dashboard
+```
+
+Access:
+
+```text
+StoreBackofficeUser
+```
+
+Query parameters:
+
+```text
+storeId           optional UUID
+lowStockThreshold optional int, default 10
+```
+
+Response `200 OK`:
+
+```json
+{
+  "storeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "storeName": "Toko Elektronik",
+  "totalProducts": 150,
+  "activeProducts": 120,
+  "inactiveProducts": 30,
+  "lowStockProducts": 5,
+  "pendingOrders": 12,
+  "confirmedOrders": 8,
+  "shippedOrders": 15,
+  "cancelledOrders": 3,
+  "todayOrders": 7,
+  "todayRevenue": 2500000,
+  "generatedAt": "2026-06-17T10:00:00Z"
+}
+```
+
+Possible errors:
+
+```text
+401 UNAUTHORIZED
+403 FORBIDDEN
+404 STORE_NOT_FOUND
+```
+
+---
+
+# 12. Internal Activity Logs API
 
 Activity logs API digunakan untuk tracing operational.
 
-## 7.1 List Activity Logs
+## 12.1 List Activity Logs
 
 ```http
 GET /api/v1/internal/activity-logs
@@ -917,7 +2012,7 @@ GET /api/v1/internal/activity-logs
 Access:
 
 ```text
-Admin/Ops only
+ApplicationAdmin, DevOps only
 ```
 
 Query parameters:
@@ -951,7 +2046,7 @@ Response `200 OK`:
       "activityType": "OrderCreated",
       "actorUserId": "33333333-3333-3333-3333-333333333333",
       "actorUsername": "customer1",
-      "actorRole": "Customer",
+      "actorRole": "Buyer",
       "orderId": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
       "orderNumber": "ORD-20260617-000001",
       "productId": null,
@@ -985,13 +2080,13 @@ Possible errors:
 Security behavior:
 
 ```text
-Customer cannot access internal activity logs.
+Buyer cannot access internal activity logs.
 Anonymous cannot access internal activity logs.
 ```
 
 ---
 
-## 7.2 Get Activity Log Detail
+## 12.2 Get Activity Log Detail
 
 ```http
 GET /api/v1/internal/activity-logs/{id}
@@ -1000,7 +2095,7 @@ GET /api/v1/internal/activity-logs/{id}
 Access:
 
 ```text
-Admin/Ops only
+ApplicationAdmin, DevOps only
 ```
 
 Route parameters:
@@ -1018,7 +2113,7 @@ Response `200 OK`:
   "activityType": "OrderCreated",
   "actorUserId": "33333333-3333-3333-3333-333333333333",
   "actorUsername": "customer1",
-  "actorRole": "Customer",
+  "actorRole": "Buyer",
   "orderId": "72f3c9f0-78ff-4f2e-a462-7e9a6efb0001",
   "orderNumber": "ORD-20260617-000001",
   "productId": null,
@@ -1046,7 +2141,7 @@ Possible errors:
 
 ---
 
-## 7.3 Internal Activity Logs Page
+## 12.3 Internal Activity Logs Page
 
 ```http
 GET /internal/activity-logs
@@ -1062,7 +2157,7 @@ Access behavior:
 
 ```text
 HTML shell can be opened for demo.
-Data API still requires Admin/Ops JWT token.
+Data API still requires ApplicationAdmin/DevOps JWT token.
 ```
 
 Page supports filters:
@@ -1080,16 +2175,129 @@ toDate
 Security:
 
 ```text
-Customer token must receive 403 when calling internal activity logs API.
+Buyer token must receive 403 when calling internal activity logs API.
 Page must not store token in localStorage/sessionStorage.
 Page escapes rendered dynamic values.
 ```
 
 ---
 
-# 8. Health Check
+# 13. Demo API
 
-## 8.1 Health
+```http
+POST /api/v1/demo/concurrent-stock-deduction
+```
+
+Access:
+
+```text
+Authenticated user
+```
+
+Request:
+
+```json
+{
+  "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "quantity": 5,
+  "customerId": "33333333-3333-3333-3333-333333333333"
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "message": "Concurrent stock deduction demo completed",
+  "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "requestedQuantity": 5,
+  "deductedQuantity": 5,
+  "remainingStock": 10
+}
+```
+
+Possible errors:
+
+```text
+400 VALIDATION_ERROR
+401 UNAUTHORIZED
+404 PRODUCT_NOT_FOUND
+409 INSUFFICIENT_STOCK
+```
+
+---
+
+# 14. Diagnostics API
+
+Access:
+
+```text
+ApplicationAdmin, DevOps only
+```
+
+## 14.1 Health OK
+
+```http
+GET /api/v1/diagnostics/ok
+```
+
+Response `200 OK`:
+
+```json
+{
+  "status": "OK"
+}
+```
+
+## 14.2 Business Rule Exception
+
+```http
+GET /api/v1/diagnostics/app-error
+```
+
+Disabled in production.
+
+Response `422 Unprocessable Entity`:
+
+```json
+{
+  "error": {
+    "code": "DEMO_BUSINESS_ERROR",
+    "message": "This is a demo business rule exception.",
+    "details": [],
+    "correlationId": "diag-001",
+    "timestamp": "2026-06-17T00:00:00Z"
+  }
+}
+```
+
+## 14.3 Unhandled Exception
+
+```http
+GET /api/v1/diagnostics/unhandled-error
+```
+
+Disabled in production.
+
+Response `500 Internal Server Error`:
+
+```json
+{
+  "error": {
+    "code": "INTERNAL_SERVER_ERROR",
+    "message": "An unexpected error occurred.",
+    "details": [],
+    "correlationId": "diag-002",
+    "timestamp": "2026-06-17T00:00:00Z"
+  }
+}
+```
+
+---
+
+# 15. Health Check
+
+## 15.1 Health
 
 ```http
 GET /health
@@ -1113,7 +2321,7 @@ Actual response shape may depend on ASP.NET Core health check default output if 
 
 ---
 
-# 9. Swagger
+# 16. Swagger
 
 Swagger endpoint:
 
@@ -1137,7 +2345,7 @@ Idempotency-Key header documentation for POST /api/v1/orders
 
 ---
 
-# 10. Activity Log Event Types
+# 17. Activity Log Event Types
 
 The system may emit these activity log types:
 
@@ -1166,6 +2374,7 @@ StockDeducted
 StockRestored
 StockNotRestored
 InsufficientStockDetected
+StockAdjusted
 
 PaymentCreateStarted
 PaymentCreated
@@ -1174,19 +2383,46 @@ PaymentFailed
 PaymentRejected
 PaymentRefundRequired
 
+StoreCreated
+StoreUpdated
+StoreOperatorCreated
+StoreOperatorStatusChanged
+
+BackofficeProductCreated
+BackofficeProductUpdated
+BackofficeProductStatusChanged
+ProductImageUploaded
+
 ConcurrencyConflict
 ```
 
 ---
 
-# 11. Authorization Summary
+# 18. Authorization Summary
 
 Roles:
 
 ```text
-Customer
-Admin
-Ops
+Buyer
+SellerAdmin
+SellerOperator
+ApplicationAdmin
+DevOps
+```
+
+Store Access:
+
+```text
+StoreBackofficeUser = SellerAdmin, SellerOperator, ApplicationAdmin
+Store owner sees all store data
+Store operator sees assigned store data
+```
+
+Customer data isolation:
+
+```text
+Buyer sees own orders only
+SellerAdmin sees own store orders
 ```
 
 Access rules:
@@ -1195,35 +2431,59 @@ Access rules:
 Auth login:
   Anonymous
 
-Products:
+Products (public):
   Authenticated user
 
 Create order:
-  Customer for self
-  Admin/Ops operational flow
+  Buyer for self
+  StoreBackofficeUser operational flow
 
 Get/list orders:
-  Customer own orders only
-  Admin/Ops all orders
+  Buyer own orders only
+  StoreBackofficeUser store orders
 
 Update status:
-  Admin/Ops only
+  StoreBackofficeUser only
 
 Cancel:
-  Customer owner
-  Admin/Ops
+  Buyer (order owner)
+  StoreBackofficeUser
 
 Payments:
-  Customer owner
-  Admin/Ops
+  Buyer (order owner)
+  StoreBackofficeUser
+
+Stores:
+  Open: Buyer or SellerAdmin
+  My stores: Authenticated user
+  Get by id: Authenticated user
+  Update: Store backoffice user
+
+Store operators:
+  StoreBackofficeUser
+
+Backoffice orders:
+  StoreBackofficeUser
+
+Backoffice products:
+  StoreBackofficeUser
+
+Backoffice dashboard:
+  StoreBackofficeUser
 
 Internal activity logs:
-  Admin/Ops only
+  ApplicationAdmin, DevOps only
+
+Demo:
+  Authenticated user
+
+Diagnostics:
+  ApplicationAdmin, DevOps only
 ```
 
 ---
 
-# 12. Important Business Rules
+# 19. Important Business Rules
 
 ## Order Status Transition
 
@@ -1279,7 +2539,7 @@ Partial unique index
 
 ---
 
-# 13. Security Notes
+# 20. Security Notes
 
 The API must never return or log:
 

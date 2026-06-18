@@ -45,13 +45,16 @@ Application exception hierarchy:
 
 ```text
 AppException
-ValidationAppException
-NotFoundAppException
-ConflictAppException
-BusinessRuleAppException
-UnauthorizedAppException
-ForbiddenAppException
-ConcurrencyAppException
+├── ValidationAppException
+├── NotFoundAppException
+├── ConflictAppException
+│   └── IdempotencyConflictAppException
+├── BusinessRuleAppException
+├── UnauthorizedAppException
+├── ForbiddenAppException
+├── ConcurrencyAppException
+├── DuplicatePaymentAppException
+└── InvalidOrderStatusAppException
 ```
 
 Global exception middleware menangkap semua exception dan mengubahnya menjadi `ApiErrorResponse`.
@@ -76,6 +79,9 @@ Global exception middleware menangkap semua exception dan mengubahnya menjadi `A
 
 422 Unprocessable Entity
   Business validation failed, invalid transition, payment not allowed.
+
+499 Client Closed Request
+  OperationCanceledException — client disconnected or request cancelled.
 
 500 Internal Server Error
   Unexpected error.
@@ -138,22 +144,39 @@ INTERNAL_SERVER_ERROR
 
 ## 6. PostgreSQL Exception Handling
 
-`PostgresException` dimapping aman:
+`PostgresException` dimapping berdasarkan SqlState:
 
 ```text
-UniqueViolation
-  Duplicate data violates a unique database constraint.
+23505 (UniqueViolation)
+  → 409 Conflict — Duplicate data violates a unique database constraint.
 
-ForeignKeyViolation
-  Referenced data does not exist.
+23503 (ForeignKeyViolation)
+  → 409 Conflict — Referenced data does not exist.
 
-CheckViolation
-  Data violates a database check constraint.
+23514 (CheckViolation)
+  → 422 Unprocessable Entity — Data violates a database check constraint.
+
+40001 (SerializationFailure)
+  → 409 Conflict — Transaction serialization failure.
+
+55P03 (LockNotAvailable)
+  → 409 Conflict — Lock timeout exceeded.
 ```
 
 Response tidak menampilkan raw SQL atau stack trace.
 
-## 7. Security Rules
+## 7. OperationCanceledException Handling
+
+`GlobalExceptionHandlingMiddleware` juga menangkap `OperationCanceledException` dan mengembalikan:
+
+```text
+499 Client Closed Request
+  Client disconnected or request was cancelled (e.g. timeout, user aborts).
+```
+
+Ini mencegah log error yang tidak perlu saat client memutus koneksi.
+
+## 8. Security Rules
 
 Tidak boleh ditampilkan di error response:
 
@@ -168,7 +191,7 @@ Stack trace
 File path internal
 ```
 
-## 8. Client UX Recommendations
+## 9. Client UX Recommendations
 
 ### INSUFFICIENT_STOCK
 
@@ -209,7 +232,7 @@ Client should:
 - Generate new key because payload changed.
 ```
 
-## 9. Logging Integration
+## 10. Logging Integration
 
 Every error is logged with:
 
