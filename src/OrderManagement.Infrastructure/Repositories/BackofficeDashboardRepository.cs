@@ -22,7 +22,7 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
     {
         if (allowedStoreIds is not null && allowedStoreIds.Count == 0)
         {
-            return Empty(query.StoreId, null, now);
+            return Empty(query.StoreId ?? Guid.Empty, null, now);
         }
 
         var conditions = new List<string>();
@@ -35,11 +35,13 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
             orderConditions.Add("o.store_id = ANY(@AllowedStoreIds)");
             parameters.Add("AllowedStoreIds", allowedStoreIds.ToArray());
         }
+        else if (query.StoreId is not null)
+        {
+            conditions.Add("p.store_id = @StoreId");
+            orderConditions.Add("o.store_id = @StoreId");
+            parameters.Add("StoreId", query.StoreId.Value);
+        }
 
-        conditions.Add("p.store_id = @StoreId");
-        orderConditions.Add("o.store_id = @StoreId");
-
-        parameters.Add("StoreId", query.StoreId);
         parameters.Add("LowStockThreshold", query.LowStockThreshold);
         parameters.Add("TodayStart", now.Date);
         parameters.Add("Now", now);
@@ -51,6 +53,12 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
         var orderWhere = orderConditions.Count == 0
             ? string.Empty
             : "WHERE " + string.Join(" AND ", orderConditions);
+
+        var storeIdForInfo = query.StoreId;
+        if (storeIdForInfo is null && allowedStoreIds is not null && allowedStoreIds.Count == 1)
+        {
+            storeIdForInfo = allowedStoreIds.First();
+        }
 
         var sql = $"""
                    WITH product_summary AS (
@@ -81,7 +89,7 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
                            s.id AS StoreId,
                            s.store_name AS StoreName
                        FROM stores s
-                       WHERE s.id = @StoreId
+                       WHERE s.id = @StoreIdForInfo
                        LIMIT 1
                    )
                    SELECT
@@ -101,6 +109,11 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
                    FROM product_summary ps
                    CROSS JOIN order_summary os;
                    """;
+
+        if (storeIdForInfo is not null)
+        {
+            parameters.Add("StoreIdForInfo", storeIdForInfo.Value);
+        }
 
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 

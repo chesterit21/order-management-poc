@@ -113,6 +113,17 @@ public sealed class OrderServiceTests
         _orderRepositoryMock
             .Setup(x => x.CancelAsync(It.IsAny<CancelOrderPersistenceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(repositoryResult);
+            
+        _orderRepositoryMock
+            .Setup(x => x.GetOrderOwnershipAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrderOwnershipResult 
+            { 
+                Id = orderId,
+                CustomerId = _currentUserId,
+                Status = "Pending",
+                RowVersion = 1,
+                OrderNumber = "ORD-001"
+            });
 
         var command = new CancelOrderCommand
         {
@@ -166,6 +177,17 @@ public sealed class OrderServiceTests
             ExpectedRowVersion = expectedRowVersion,
             CancellationReason = cancellationReason
         };
+        
+        _orderRepositoryMock
+            .Setup(x => x.GetOrderOwnershipAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrderOwnershipResult 
+            { 
+                Id = orderId,
+                CustomerId = _currentUserId,
+                Status = "Pending",
+                RowVersion = 1,
+                OrderNumber = "ORD-001"
+            });
 
         // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAppException>(() => _service.CancelAsync(command, CancellationToken.None));

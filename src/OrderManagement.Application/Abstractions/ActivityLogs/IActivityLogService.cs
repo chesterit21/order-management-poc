@@ -15,4 +15,11 @@ public interface IActivityLogService
     Task<PagedResult<ActivityLogListItemDto>> ListAsync(
         ActivityLogListQueryDto query,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists activity log entries (v2) with LIKE filtering on CorrelationId, OrderNumber, and ActivityType.
+    /// </summary>
+    Task<PagedResult<ActivityLogListItemDto>> ListV2Async(
+        ActivityLogListV2QueryDto query,
+        CancellationToken cancellationToken = default);
 }

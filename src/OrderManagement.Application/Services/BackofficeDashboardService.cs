@@ -40,11 +40,14 @@ public sealed class BackofficeDashboardService(
                     .ToArray());
         }
 
-        await _storeAuthorizationService.EnsureCanOperateStoreAsync(
-            query.StoreId,
-            cancellationToken);
-
         var allowedStoreIds = await ResolveAllowedStoreIdsAsync(cancellationToken);
+
+        if (query.StoreId is not null)
+        {
+            await _storeAuthorizationService.EnsureCanOperateStoreAsync(
+                query.StoreId.Value,
+                cancellationToken);
+        }
 
         return await _repository.GetSummaryAsync(
             query,

@@ -51,18 +51,6 @@ public sealed class PaymentRepository(
                 throw NotFoundAppException.Order(request.OrderId);
             }
 
-            if (request.RequestedByRole is UserRole.Buyer or UserRole.SellerAdmin &&
-                order.CustomerId != request.RequestedBy)
-            {
-                throw new ForbiddenAppException("Buyer can only pay their own order.");
-            }
-
-            // Allow Buyer/SellerAdmin (for buyer payments), ApplicationAdmin (for operational payments)
-            // SellerOperator is restricted from making buyer payments
-            if (request.RequestedByRole is not (UserRole.Buyer or UserRole.SellerAdmin or UserRole.ApplicationAdmin))
-            {
-                throw new ForbiddenAppException("User is not allowed to create payment.");
-            }
 
             var currentOrderStatus = ParseOrderStatus(order.Status);
 

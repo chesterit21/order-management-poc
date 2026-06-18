@@ -231,6 +231,13 @@ Request B INSERT gagal (unique constraint) -> baca existing record -> return con
 
 **Hasil:** Hanya satu order yang dibuat, hanya satu *stock deduction*.
 
+### Justifikasi Pilihan Strategi Idempotency
+
+**Mengapa menggunakan Idempotency-Key Header + Payload Hash + Unique Constraint Database?**
+- **Kelebihan dibanding Caching (Redis)**: Menyimpan idempotency state di database (PostgreSQL) memberikan jaminan *atomic transaction*. Jika transaksi pembuatan order di-*rollback*, state idempotency juga dapat diselaraskan. Dengan Redis, kita rentan terhadap *split-brain* atau koneksi terputus yang menyebabkan state *out-of-sync* dengan database.
+- **Kelebihan Payload Hash**: Memastikan *client* tidak secara tidak sengaja me-*reuse* key yang sama untuk *request body* yang berbeda. Ini mencegah *silent bugs* dimana order berbeda tertelan oleh key yang sama.
+- **Kelebihan Unique Constraint (`ON CONFLICT`)**: Pendekatan *atomic insert* jauh lebih superior dibanding pola *Check-Then-Insert* di level aplikasi yang rawan terhadap *Time-Of-Check to Time-Of-Use* (TOCTOU) bug saat *race condition* ekstrim.
+
 ---
 
 ## Concurrency Handling
@@ -260,6 +267,11 @@ Setelah *lock* diperoleh:
 
 **Last defense:** `CHECK (stock_quantity >= 0)` di tabel `products`.
 
+#### Justifikasi: Kenapa Pessimistic Locking (`SELECT FOR UPDATE`)?
+- **Alasan**: *Inventory/Stock deduction* adalah area *high-contention*. Banyak *user* sering memperebutkan stok barang yang sama (flash sale).
+- **Kelebihan dibanding Optimistic Locking**: Jika kita memakai *Optimistic Locking* (cek versi lalu update), banyak transaksi akan gagal (Conflict/409) dan *client* harus *retry* berulang kali, yang memperparah *load* server. Dengan *Pessimistic Locking*, transaksi otomatis *queued* di level database dan diserialisasi dengan efisien.
+- **Kelebihan dibanding Memory Queue**: Menjaga arsitektur tetap *stateless* tanpa perlu *service inventory* terpisah atau *message broker* seperti Kafka/RabbitMQ untuk *prototype* ini.
+
 ### 2. Concurrent Status Update
 
 **Masalah:** Dua admin meng-*update* status order yang sama bersamaan.
@@ -279,6 +291,11 @@ Setelah *lock*:
 3. Jalankan NRules berdasarkan *latest status*
 4. *Update* status + increment `row_version`
 5. *Insert status history*
+
+#### Justifikasi: Kenapa Optimistic Locking (`row_version`)?
+- **Alasan**: Frekuensi admin saling bentrok memperbarui order yang persis *sama* relatif rendah (*low-contention*), tetapi dampaknya fatal jika ditimpa (lost update).
+- **Kelebihan dibanding Pessimistic Locking**: Tidak memblokir pembacaan data, *overhead* jauh lebih ringan. Saat admin B mencoba *update* setelah admin A, wajar jika kita langsung me-*reject* dengan *error 409 Conflict* agar admin B me-*refresh* UI-nya dan melihat perubahan dari admin A.
+- **Kelebihan NRules Engine**: Memisahkan validasi *state machine* yang rumit (transisi, role akses, prasyarat cancel) dari infrastruktur database.
 
 ### 3. Double Cancel Race
 
@@ -319,15 +336,17 @@ Agar *request* tidak menggantung terlalu lama saat menunggu *lock*.
 
 ## Alasan Memilih PostgreSQL
 
+Dibandingkan MySQL atau SQL Server, PostgreSQL dipilih dengan alasan teknis berikut:
+
 | Alasan | Detail |
 |---|---|
-| Row-level locking (`FOR UPDATE`) | Esensial untuk *concurrency control* |
+| Pendekatan Row-level locking yang Superior (`FOR UPDATE`) | Sangat stabil dan bisa dikombinasikan dengan `SKIP LOCKED` atau `NOWAIT` jika kelak diperlukan untuk *queueing*. Mencegah *dirty reads* secara esensial untuk *concurrency control* (Skenario A & B). |
 | Unique constraint | Vital untuk idempotency |
 | Check constraint | *Last defense* stok tidak negatif |
-| Sequence | Untuk *order number generation* yang aman di *concurrent request* |
-| JSONB | Untuk `activity_logs` metadata/before/after state |
-| Maturity | Stabil, terbukti untuk *production workload* |
-| Testcontainers support | Mudah untuk *integration test* |
+| Sequence | Sangat efisien untuk *order number generation* yang aman dan atomik di tengah *concurrent request*. Jauh lebih cepat dari tabel *counter* biasa. |
+| JSONB | Dukungan *native* untuk `activity_logs` metadata/before/after state tanpa mem-parsing manual. Sangat superior dibandingkan kolom teks JSON di RDBMS lain. |
+| Maturity & MVCC | Implementasi *Multi-Version Concurrency Control* (MVCC) PostgreSQL memungkinkan pembaca (GET /orders) tidak memblokir penulis (POST /orders), menjaga performa tetap tinggi. |
+| Testcontainers support | Sangat mudah di-spin up untuk *integration test*, menjamin paritas 100% antara *testing* dan *production*. |
 
 ---
 

@@ -48,7 +48,7 @@ public sealed class ConcurrentStatusUpdateTests : IClassFixture<OrderManagementA
             token,
             orderId,
             rowVersion,
-            "Shipped");
+            "Confirmed");
 
         var responses = await Task.WhenAll(task1, task2);
 
@@ -56,9 +56,8 @@ public sealed class ConcurrentStatusUpdateTests : IClassFixture<OrderManagementA
         responses.Count(x => x.StatusCode == HttpStatusCode.OK).Should().Be(1);
         responses.Count(x => x.StatusCode == HttpStatusCode.Conflict).Should().Be(1);
 
-        // Check final state
         var status = await DatabaseAssertHelper.GetOrderStatusAsync(_factory.ConnectionString, orderId);
-        status.Should().BeOneOf("Confirmed", "Shipped");
+        status.Should().Be("Confirmed");
 
         // Verify row version was incremented
         var finalRowVersion = await DatabaseAssertHelper.GetOrderRowVersionAsync(

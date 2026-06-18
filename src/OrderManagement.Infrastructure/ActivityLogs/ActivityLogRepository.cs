@@ -244,6 +244,95 @@ public sealed class ActivityLogRepository(IDbConnectionFactory connectionFactory
         };
     }
 
+    /// <summary>
+    /// Lists activity log entries (v2) with LIKE filtering on CorrelationId, OrderNumber, and ActivityType.
+    /// Uses parameterized WHERE clause to prevent SQL injection.
+    /// Results are ordered by created_at DESC (newest first).
+    /// </summary>
+    public async Task<PagedResult<ActivityLogListItemDto>> ListV2Async(
+        ActivityLogListV2QueryDto query,
+        CancellationToken cancellationToken = default)
+    {
+        var page = query.Page < 1 ? 1 : query.Page;
+        var pageSize = query.PageSize < 1 ? 50 : Math.Min(query.PageSize, 200);
+        var offset = (page - 1) * pageSize;
+
+        var conditions = new List<string>();
+        var parameters = new DynamicParameters();
+
+        if (!string.IsNullOrWhiteSpace(query.CorrelationId))
+        {
+            conditions.Add("correlation_id LIKE @CorrelationId");
+            parameters.Add("CorrelationId", $"%{query.CorrelationId.Trim()}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.OrderNumber))
+        {
+            conditions.Add("order_number LIKE @OrderNumber");
+            parameters.Add("OrderNumber", $"%{query.OrderNumber.Trim()}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ActivityType))
+        {
+            conditions.Add("activity_type LIKE @ActivityType");
+            parameters.Add("ActivityType", $"%{query.ActivityType.Trim()}%");
+        }
+
+        var whereClause = conditions.Count > 0
+            ? "WHERE " + string.Join(" AND ", conditions)
+            : string.Empty;
+
+        parameters.Add("Limit", pageSize);
+        parameters.Add("Offset", offset);
+
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        var sql = $"""
+                   SELECT
+                       id,
+                       correlation_id AS CorrelationId,
+                       activity_type AS ActivityType,
+                       actor_user_id AS ActorUserId,
+                       actor_username AS ActorUsername,
+                       actor_role AS ActorRole,
+                       order_id AS OrderId,
+                       order_number AS OrderNumber,
+                       product_id AS ProductId,
+                       payment_id AS PaymentId,
+                       request_path AS RequestPath,
+                       http_method AS HttpMethod,
+                       status_code AS StatusCode,
+                       elapsed_ms AS ElapsedMs,
+                       error_code AS ErrorCode,
+                       before_state::text AS BeforeStateJson,
+                       after_state::text AS AfterStateJson,
+                       metadata::text AS MetadataJson,
+                       created_at AS CreatedAt
+                   FROM activity_logs
+                   {whereClause}
+                   ORDER BY created_at DESC
+                   LIMIT @Limit OFFSET @Offset;
+
+                   SELECT COUNT(*)
+                   FROM activity_logs
+                   {whereClause};
+                   """;
+
+        await using var multi = await connection.QueryMultipleAsync(
+            new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+
+        var items = (await multi.ReadAsync<ActivityLogListItemDto>()).ToArray();
+        var totalItems = await multi.ReadFirstAsync<long>();
+
+        return new PagedResult<ActivityLogListItemDto>
+        {
+            Items = items,
+            Page = page,
+            PageSize = pageSize,
+            TotalItems = totalItems
+        };
+    }
+
     private static string? TrimToLength(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))

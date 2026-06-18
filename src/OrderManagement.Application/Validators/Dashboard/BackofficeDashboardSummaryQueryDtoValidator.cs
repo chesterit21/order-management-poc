@@ -9,8 +9,8 @@ public sealed class BackofficeDashboardSummaryQueryDtoValidator
     public BackofficeDashboardSummaryQueryDtoValidator()
     {
         RuleFor(query => query.StoreId)
-            .NotEmpty()
-            .WithMessage("StoreId is required.");
+            .Must(id => id is null || id != Guid.Empty)
+            .WithMessage("StoreId must be a valid GUID.");
 
         RuleFor(query => query.LowStockThreshold)
             .InclusiveBetween(0, 100_000)
