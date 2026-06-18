@@ -487,6 +487,15 @@ $RECYCLE.BIN/
 .env
 .env.local
 
+# Generated files
+Generated-Files/
+
+# IDE tools
+.lingma/
+
+# Waylog
+.waylog/
+
 # IDE
 .idea/
 .vscode/
