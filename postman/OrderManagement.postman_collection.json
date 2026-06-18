@@ -1,0 +1,209 @@
+{
+  "info": {
+    "name": "Order Management API",
+    "_postman_id": "a8a1aa9d-4377-4e5c-9101-ordermanagement",
+    "description": "Order Management POC API collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:7000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "rowVersion",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth - Login Customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"customer1\",\n  \"password\": \"Password123!\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Products - List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "X-Correlation-ID",
+            "value": "postman-products-list"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/products?page=1&pageSize=20"
+      }
+    },
+    {
+      "name": "Orders - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          },
+          {
+            "key": "X-Correlation-ID",
+            "value": "postman-create-order"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"shippingAddress\": \"Jl. Postman Demo\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Orders - Get Detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders/{{orderId}}"
+      }
+    },
+    {
+      "name": "Orders - List",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders?page=1&pageSize=20"
+      }
+    },
+    {
+      "name": "Payments - Create Success",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders/{{orderId}}/payments",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"provider\": \"MockPayment\",\n  \"simulateResult\": \"Success\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Orders - Update Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders/{{orderId}}/status",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"targetStatus\": \"Shipped\",\n  \"expectedRowVersion\": {{rowVersion}},\n  \"reason\": \"Postman update status\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Orders - Cancel Customer Requested",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders/{{orderId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expectedRowVersion\": {{rowVersion}},\n  \"cancellationReason\": \"CustomerRequested\",\n  \"reason\": \"Customer requested cancellation\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Orders - Cancel Stock Unavailable",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/orders/{{orderId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expectedRowVersion\": {{rowVersion}},\n  \"cancellationReason\": \"StockUnavailable\",\n  \"reason\": \"Physical stock unavailable due to offline sale\"\n}"
+        }
+      }
+    }
+  ]
+}
