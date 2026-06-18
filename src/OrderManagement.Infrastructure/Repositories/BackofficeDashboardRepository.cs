@@ -40,9 +40,9 @@ public sealed class BackofficeDashboardRepository : IBackofficeDashboardReposito
         {
             conditions.Add("p.store_id = @StoreId");
             orderConditions.Add("o.store_id = @StoreId");
-            parameters.Add("StoreId", query.StoreId.Value);
         }
 
+        parameters.Add("StoreId", query.StoreId ?? (object)DBNull.Value);
         parameters.Add("LowStockThreshold", query.LowStockThreshold);
         parameters.Add("TodayStart", now.Date);
         parameters.Add("Now", now);
